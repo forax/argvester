@@ -1,2 +1,2 @@
 # argvester
-Argument Harvester - a simple command line parser
+ARGument harVESTER - a simple command line parser
