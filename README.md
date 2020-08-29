@@ -13,7 +13,7 @@ Argvester supports 3 kinds of arguments
 - variadic argument, one argument at the end that will collect all the arguments that rest
 
 Moreover, you can use (it's not a requirement) the annotation Opt to specify additional properties.
-This annotation is heavily inspired by [Google Options](https://github.com/pcj/google-options).
+This annotation is heavily inspired by the project [Google Options](https://github.com/pcj/google-options).
 
 ### A record as a meta desciption 
 
