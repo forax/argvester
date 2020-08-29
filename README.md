@@ -12,12 +12,12 @@ Argvester supports 3 kinds of arguments
 - optional argument, argument that starts with '-' or '--' and can happear anywhere on the command line
 - variadic argument, one argument at the end that will collect all the arguments that rest
 
-Moreover, you can use (it's not a requirement) the annotation @{code @Opt} to specify additional properties.
-This annotation is heavily inspired by
+Moreover, you can use (it's not a requirement) the annotation Opt to specify additional properties.
+This annotation is heavily inspired by [Google Options](https://github.com/pcj/google-options).
 
 ### A record as a meta desciption 
 
-The idea is to create a record that describes all the arguments of the command line
+First, let us define a record that describes all the arguments of the command line
 
 ```java
   enum LogLevel { error, warning }
