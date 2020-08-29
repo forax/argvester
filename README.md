@@ -3,12 +3,17 @@ ARGument harVESTER - a simple command line parser written with Love and Java 15
 
 Apart from being fun, the code also show how record (Java 14) and sealed types (Java 15) works together.
 
-The idea: use a record as a meta description of the arguments of the command line
+The argvester uses a record as a meta description of the arguments of the command line.
+The original idea comes from [structopt](https://github.com/p-ranav/structopt) that uses
+a struct in C++, so the argvester is a kind of liberal port of structopt in Java.
+
 Argvester supports 3 kinds of arguments
 - positional argument, argument that are required and in the right order
 - optional argument, argument that starts with '-' or '--' and can happear anywhere on the command line
 - variadic argument, one argument at the end that will collect all the arguments that rest
 
+Moreover, you can use (it's not a requirement) the annotation @{code @Opt} to specify additional properties.
+This annotation is heavily inspired by
 
 ### A record as a meta desciption 
 
