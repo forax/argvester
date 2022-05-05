@@ -1,5 +1,6 @@
 package org.github.forax.argvester;
 
+import java.io.Serial;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 import java.lang.invoke.MethodHandle;
@@ -411,6 +412,7 @@ public class ArgVester<R extends Record> {
    * Exception thrown if the arguments of a command line do not follow the meta description.
    */
   public static class ArgumentParsingException extends RuntimeException {
+    @Serial
     private static final long serialVersionUID = 7615300674655629536L;
 
     public ArgumentParsingException(String message) {
