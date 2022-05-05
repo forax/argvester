@@ -12,10 +12,17 @@ Argvester supports 3 kinds of arguments
 - optional argument, argument that starts with '-' or '--' and can happear anywhere on the command line
 - variadic argument, one argument at the end that will collect all the arguments that rest
 
+To define the arguments, the ArgVester uses the record components of a record as meta description. 
+If a record component is annotated with @Opt, the argument kind is determined by the property
+`Opt.kind()`. If the kind is AUTO, then the following algorithm is used
+- if the last record component is a collection, it's a variadic argument
+- if a record component is typed by Optional or a collection, it's an optional argument
+- otherwise it's a positional argument
+
 Moreover, you can use (it's not a requirement) the annotation Opt to specify additional properties.
 This annotation is heavily inspired by the project [Google Options](https://github.com/pcj/google-options).
 
-### A record as a meta desciption 
+### A record as a meta description 
 
 First, let us define a record that describes all the arguments of the command line
 
