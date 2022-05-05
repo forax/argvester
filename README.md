@@ -12,9 +12,7 @@ Argvester supports 3 kinds of arguments
 - optional argument, argument that starts with '-' or '--' and can happear anywhere on the command line
 - variadic argument, one argument at the end that will collect all the arguments that rest
 
-To define the arguments, the ArgVester uses the record components of a record as meta description. 
-If a record component is annotated with @Opt, the argument kind is determined by the property
-`Opt.kind()`. If the kind is AUTO, then the following algorithm is used
+To define the arguments, the following algorithm is used
 - if the last record component is a collection, it's a variadic argument
 - if a record component is typed by Optional or a collection, it's an optional argument
 - otherwise it's a positional argument
