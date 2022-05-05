@@ -9,6 +9,7 @@ import java.lang.invoke.MethodHandles.Lookup;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
+import java.lang.reflect.Type;
 import java.lang.reflect.UndeclaredThrowableException;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -50,9 +51,15 @@ import static java.util.stream.Collectors.toList;
  *       (a boolean option has no value)
  *   <li>a variadic argument, the last arguments are grouped together in a list
  * </ol>
- * Inside a record, the arguments need to defined in the same order i.e.
- * first the positional arguments then the optional arguments and at the end
- * optionally a variadic argument.
+ *
+ * To define the arguments, the ArgVester uses the record components of a record as meta description.
+ * If a record component is annotated with @{@link Opt}, the argument kind is determined by the property
+ * {@link Opt#kind()}. If the kind is {@link Opt.Kind#AUTO}, then the following algorithm is used
+ * <ol>
+ *   <li>if the last record component is a collection, it's a variadic argument
+ *   <li>if a record component is typed by {@link Optional} or a collection, it's an optional argument
+ *   <li>otherwise it's a positional argument
+ * </ol>
  *
  * Here is an example of record used to define a command line
  * <pre>
@@ -113,9 +120,15 @@ public class ArgVester<R extends Record> {
       }
     }
   }
-  private record OptionalArg(Info info, Function<String, ?> converter, int position, boolean flag) implements Arg {
+  private record OptionalArg(Info info, Function<String, ?> converter, Collector<Object, ?, ?> collector, int position, Kind kind) implements Arg {
+    private enum Kind {
+      FLAG,
+      OPTIONAL,
+      LIST
+    }
+
     String withParam(String optionName) {
-      return flag? optionName: optionName + " " + info.valueHelp;
+      return kind == Kind.FLAG? optionName: optionName + " " + info.valueHelp;
     }
   }
   private record PositionalArg(Info info, Function<String, ?> converter) implements Arg {}
@@ -140,6 +153,7 @@ public class ArgVester<R extends Record> {
    * @see #create(Lookup, Class)
    */
   public static class InvalidMetaDescriptionException extends RuntimeException {
+    @Serial
     private static final long serialVersionUID = -3116126263566500943L;
 
     public InvalidMetaDescriptionException(String message) {
@@ -151,12 +165,47 @@ public class ArgVester<R extends Record> {
     }
   }
 
+  private static Class<?> isClass(Type type) {
+    if (type instanceof Class<?> clazz) {
+      return clazz;
+    }
+    return null;
+  }
+
+  private static Class<?> isOptional(Type type) {
+    if (type instanceof ParameterizedType parameterizedType) {
+      var rawType = parameterizedType.getRawType();
+      if (rawType == Optional.class) {
+        var typeArgument = parameterizedType.getActualTypeArguments()[0];
+        if (typeArgument instanceof Class<?> clazz) {
+          return clazz;
+        }
+      }
+    }
+    return null;
+  }
+
+  private record CollectionType(Class<?> collection, Class<?> clazz) {}
+
+  private static CollectionType isCollection(Type type) {
+    if (type instanceof ParameterizedType parameterizedType) {
+      var rawType = parameterizedType.getRawType();
+      if (rawType instanceof Class<?> rawClass && Collection.class.isAssignableFrom(rawClass)) {
+        var typeArgument = parameterizedType.getActualTypeArguments()[0];
+        if (typeArgument instanceof Class<?> clazz) {
+          return new CollectionType(rawClass, clazz);
+        }
+      }
+    }
+    return null;
+  }
+
   /**
    * Create an argument harvester from a meta description provided as a record.
    * @param lookup the lookup used to find the record constructor.
    * @param schema a record class used as a meta description.
    * @param <R> the type of the record.
-   * @return an instance of an arguments harvester configured with the record meta description.
+   * @return an instance of the argument harvester configured with the record meta description.
    * @throws InvalidMetaDescriptionException if the meta description is invalid,
    *         if the argument kinds (positional, optional, variadic) are not in that order,
    *         if the type of an argument is unknown (only String, Path and boolean, int, double are supported),
@@ -166,71 +215,66 @@ public class ArgVester<R extends Record> {
     requireNonNull(lookup);
     requireNonNull(schema);
 
-    // scan to find all arguments in the schema
+    // scan to find all arguments in the meta description
     var positionalArgs = new ArrayList<PositionalArg>();
     var optionalArgs = new LinkedHashMap<String, OptionalArg>();
     VariadicArg variadicArg = null;
     var recordComponents = schema.getRecordComponents();
-    var argCount = recordComponents.length;
-
-    // positional arguments
-    var i = 0;
-    for (; i < argCount; i++) {
+    var length = recordComponents.length;
+    for(var i = 0; i < length; i++) {
       var component = recordComponents[i];
       var type = component.getGenericType();
-      if (type instanceof Class<?> clazz) {
-        var positionalArg = new PositionalArg(Info.create(component), converter(component, clazz));
-        positionalArgs.add(positionalArg);
-        continue;
+      var opt = component.getAnnotation(Opt.class);
+
+      // if automatic find the kind using a heuristic
+      Opt.Kind optKind;
+      if (opt == null || (optKind = opt.kind()) == Opt.Kind.AUTO) {
+        optKind = (i == length - 1 && isCollection(type) != null)? Opt.Kind.VARIADIC:
+            (isOptional(type) != null || isCollection(type) != null)? Opt.Kind.OPTIONAL: Opt.Kind.POSITIONAL;
       }
-      break;
-    }
 
-    // optional arguments
-    for (; i < argCount; i++) {
-      var component = recordComponents[i];
-      var type = component.getGenericType();
-      if (type instanceof ParameterizedType parameterizedType) {
-        var rawType = parameterizedType.getRawType();
-        if (rawType == Optional.class) {
-          var typeArgument = parameterizedType.getActualTypeArguments()[0];
-          if (typeArgument instanceof Class<?> clazz) {
-            var info = Info.create(component);
-            OptionalArg optionalArg;
-            if (clazz == Boolean.class) {
-              optionalArg = new OptionalArg(info, Boolean::parseBoolean, i, true);
-            } else {
-              optionalArg = new OptionalArg(info, converter(component, clazz), i, false);
+      // create the argument based on the kind
+      switch (optKind) {
+        case POSITIONAL -> {
+          var clazz = isClass(type);
+          if (clazz == null) {
+            throw new InvalidMetaDescriptionException("invalid type for a positional argument, " + component);
+          }
+          positionalArgs.add(new PositionalArg(Info.create(component), converter(component, clazz)));
+        }
+        case OPTIONAL -> {
+          Collector<Object, ?,?> collector;
+          OptionalArg.Kind kind;
+          var clazz = isOptional(type);
+          if (clazz != null) {
+            kind = clazz == Boolean.class? OptionalArg.Kind.FLAG: OptionalArg.Kind.OPTIONAL;
+            collector = null;
+          } else {
+            var collectionType = isCollection(type);
+            if (collectionType == null) {
+              throw new InvalidMetaDescriptionException("invalid type for a optional argument, " + component);
             }
-            optionalArgs.put("-" + info.abbrev, optionalArg);
-            optionalArgs.put("--" + info.name, optionalArg);
-            continue;
+            kind = OptionalArg.Kind.LIST;
+            clazz = collectionType.clazz;
+            collector = collector(component, collectionType.collection);
           }
+          var info = Info.create(component);
+          var optionalArg = new OptionalArg(info, converter(component, clazz), collector, i, kind);
+          optionalArgs.put("-" + info.abbrev, optionalArg);
+          optionalArgs.put("--" + info.name, optionalArg);
         }
-      }
-      break;
-    }
-
-    // variadic argument
-    if (i == argCount -1) {
-      var component = recordComponents[i];
-      var type = component.getGenericType();
-      if (type instanceof ParameterizedType parameterizedType) {
-        var rawType = parameterizedType.getRawType();
-        if (rawType instanceof Class<?> rawClass && Collection.class.isAssignableFrom(rawClass)) {
-          var typeArgument = parameterizedType.getActualTypeArguments()[0];
-          if (typeArgument instanceof Class<?> clazz) {
-            variadicArg = new VariadicArg(Info.create(component), converter(component, clazz), collector(component, rawClass));
-            i++;
+        case VARIADIC -> {
+          if (variadicArg != null) {
+            throw new InvalidMetaDescriptionException("a variadic argument is already defined, " + component);
           }
+          var collectionType = isCollection(type);
+          if (collectionType == null) {
+            throw new InvalidMetaDescriptionException("invalid type for a variadic argument, " +component);
+          }
+          variadicArg = new VariadicArg(Info.create(component), converter(component, collectionType.clazz), collector(component, collectionType.collection));
         }
+        default -> throw new AssertionError("should be unreachable");
       }
-    }
-
-    // error
-    if (i != argCount) {
-      var component = recordComponents[i];
-      throw new InvalidMetaDescriptionException("unrecognized record component type " + component);
     }
 
     MethodHandle mh;
@@ -299,6 +343,33 @@ public class ArgVester<R extends Record> {
   @Retention(RUNTIME)
   public @interface Opt {
     /**
+     * Argument kind.
+     */
+    enum Kind {
+      /**
+       * Positional argument.
+       */
+      POSITIONAL,
+      /**
+       * Optional argument
+       */
+      OPTIONAL,
+      /**
+       * Variadic argument
+       */
+      VARIADIC,
+      /**
+       * Automatic argument, the position in the record determines the kind of argument.
+       */
+      AUTO
+    }
+
+    /**
+     * Argument kind.
+     */
+    Kind kind() default Kind.AUTO;
+
+    /**
      * Name of the argument
      * @return the name of the argument
      */
@@ -324,9 +395,9 @@ public class ArgVester<R extends Record> {
   }
 
   /**
-   * Print an help message from the meta description
+   * Print a help message from the meta description
    *
-   * By example with the record
+   * For example with the record
    * <pre>
    *   enum LogLevel { error, warning }
    *   record Option(
@@ -362,7 +433,7 @@ public class ArgVester<R extends Record> {
    *
    * A call to {@code toHelp("myapp")} return the following text
    * <pre>
-   *  myapp <config-file> [options] <filenames...>
+   *  myapp &lt;config-file&gt; [options] &lt;filenames...&gt;
    *    with:
    *      config-file: the configuration file
    *      filenames: file names exposed as services
@@ -454,7 +525,7 @@ public class ArgVester<R extends Record> {
           value = tokens[1];
         } else {
           optionalArg = optionalArgs.get(arg);
-          if (optionalArg == null || optionalArg.flag) {  // delay null check see below
+          if (optionalArg == null || optionalArg.kind == OptionalArg.Kind.FLAG) {  // delay null check see below
             value = "true";
           } else {
             value = args[++i];
