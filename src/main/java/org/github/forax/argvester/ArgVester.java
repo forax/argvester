@@ -44,10 +44,10 @@ import static java.util.stream.Collectors.toList;
  *
  * The command line is defined by three kinds of arguments
  * <ol>
- *   <li>positional arguments</li>, required arguments (in order)
- *   <li>optional arguments</li>, arguments composed of a name prefixed by either "-" or "--" and a value
+ *   <li>positional arguments, required arguments (in order)
+ *   <li>optional arguments, arguments composed of a name prefixed by either "-" or "--" and a value
  *       (a boolean option has no value)
- *   <li>a variadic argument</li>, the last arguments are grouped together in a list
+ *   <li>a variadic argument, the last arguments are grouped together in a list
  * </ol>
  * Inside a record, the arguments need to defined in the same order i.e.
  * first the positional arguments then the optional arguments and at the end
@@ -58,7 +58,7 @@ import static java.util.stream.Collectors.toList;
  *   enum LogLevel { error, warning }
  *   record Opt(
  *      // positional argument
- *      // java MyClass <config_file>
+ *      // java MyClass &lt;config_file&gt;
  *      Path config_file,
  *
  *      // optional argument
@@ -68,19 +68,19 @@ import static java.util.stream.Collectors.toList;
  *      //   e.g., -b:192.168.0.10
  *      //   e.g., --bind-address=192.168.0.10
  *      //   e.g., --bind-address 192.168.0.10
- *      Optional<String> bind_address,
+ *      Optional&lt;String&gt; bind_address,
  *
  *      // use enum to restrict possible arguments
  *      //   e.g., --log-level error
- *      Optional<LogLevel> log_level,
+ *      Optional&lt;LogLevel&gt; log_level,
  *
  *      // optional flag argument
  *      //   e.g, -v or --verbose
- *      Optional<Boolean> verbose,
+ *      Optional&lt;Boolean&gt; verbose,
  *
  *      // variadic argument
  *      // use a collection like java.util.List or java.util.Set
- *      List<String> filenames
+ *      List&lt;String&gt; filenames
  *   ) {}
  * </pre>
  */
@@ -341,21 +341,21 @@ public class ArgVester<R extends Record> {
    *       //   e.g., --bind-address=192.168.0.10
    *       //   e.g., --bind-address 192.168.0.10
    *       @Opt(valueHelp = "address", help = "bind address of the service")
-   *       Optional<String> bind_address,
+   *       Optional&lt;String&gt; bind_address,
    *
    *       // use enum to restrict possible arguments
    *       @Opt(valueHelp = "level", help = "logger level")
-   *       Optional<LogLevel> log_level,
+   *       Optional&lt;LogLevel&gt; log_level,
    *
    *       // flag argument
    *       // -v or --verbose
    *       @Opt(help = "logged data verbose mode")
-   *       Optional<Boolean> verbose,
+   *       Optional&lt;Boolean&gt; verbose,
    *
    *       // variadic argument
    *       // use a collection like java.util.List or java.util.Set
    *       @Opt(help = "file names exposed as services")
-   *       List<String> filenames
+   *       List&lt;String&gt; filenames
    *     ) {}
    * </pre>
    *
