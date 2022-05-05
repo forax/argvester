@@ -2,10 +2,12 @@ package org.github.forax.argvester;
 
 import org.github.forax.argvester.ArgVester.ArgumentParsingException;
 import org.github.forax.argvester.ArgVester.Opt;
+import org.github.forax.argvester.ArgVester.Opt.Kind;
 import org.junit.jupiter.api.Test;
 
 import java.lang.invoke.MethodHandles;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -13,6 +15,7 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 public class ArgVesterTest {
   @Test
@@ -24,8 +27,10 @@ public class ArgVesterTest {
 
     var argVester = ArgVester.create(MethodHandles.lookup(), OnlyPositional.class);
     var onlyPositional = argVester.parse(new String[] { "foo", "pa33w0rd"});
-    assertEquals("foo", onlyPositional.login);
-    assertEquals("pa33w0rd", onlyPositional.password);
+    assertAll(
+        () -> assertEquals("foo", onlyPositional.login),
+        () -> assertEquals("pa33w0rd", onlyPositional.password)
+    );
   }
 
   @Test
@@ -42,12 +47,14 @@ public class ArgVesterTest {
 
     var argVester = ArgVester.create(MethodHandles.lookup(), Conversion.class);
     var conversion = argVester.parse(new String[] { "foo", "bar.txt", "3", "3.14", "true", "red"});
-    assertEquals("foo", conversion.string);
-    assertEquals(Path.of("bar.txt"), conversion.path);
-    assertEquals(3, conversion.integer);
-    assertEquals(3.14, conversion.number);
-    assertEquals(true, conversion.flag);
-    assertEquals(Color.red, conversion.color);
+    assertAll(
+        () -> assertEquals("foo", conversion.string),
+        () -> assertEquals(Path.of("bar.txt"), conversion.path),
+        () -> assertEquals(3, conversion.integer),
+        () -> assertEquals(3.14, conversion.number),
+        () -> assertTrue(conversion.flag),
+        () -> assertEquals(Color.red, conversion.color)
+    );
   }
 
   @Test
@@ -71,12 +78,14 @@ public class ArgVesterTest {
        --flag:true
        --integer:3
        """.lines().toArray(String[]::new));
-    assertEquals("foo", conversion.string.orElseThrow());
-    assertEquals(Path.of("bar.txt"), conversion.path.orElseThrow());
-    assertEquals(3, conversion.integer.orElseThrow());
-    assertEquals(3.14, conversion.number.orElseThrow());
-    assertEquals(true, conversion.flag.orElseThrow());
-    assertEquals(Color.green, conversion.color.orElseThrow());
+    assertAll(
+        () -> assertEquals("foo", conversion.string.orElseThrow()),
+        () -> assertEquals(Path.of("bar.txt"), conversion.path.orElseThrow()),
+        () -> assertEquals(3, conversion.integer.orElseThrow()),
+        () -> assertEquals(3.14, conversion.number.orElseThrow()),
+        () -> assertEquals(true, conversion.flag.orElseThrow()),
+        () -> assertEquals(Color.green, conversion.color.orElseThrow())
+    );
   }
 
   @Test
@@ -148,11 +157,89 @@ public class ArgVesterTest {
     var args = "file.conf --bind-address 192.168.0.10 --log-level:warning -v foo.txt bar.txt".split(" ");
     var option = argVester.parse(args);
 
-    assertEquals(Path.of("file.conf"), option.config_file);
-    assertEquals("192.168.0.10", option.bind_address.orElseThrow());
-    assertEquals(LogLevel.warning, option.log_level.orElseThrow());
-    assertEquals(true, option.verbose.orElseThrow());
-    assertEquals(List.of("foo.txt", "bar.txt"), option.filenames);
+    assertAll(
+        () -> assertEquals(Path.of("file.conf"), option.config_file),
+        () -> assertEquals("192.168.0.10", option.bind_address.orElseThrow()),
+        () -> assertEquals(LogLevel.warning, option.log_level.orElseThrow()),
+        () -> assertEquals(true, option.verbose.orElseThrow()),
+        () -> assertEquals(List.of("foo.txt", "bar.txt"), option.filenames)
+    );
+  }
+
+  @Test
+  public void copy() {
+    record Copy(
+        // optional argument
+        Optional<Boolean> pretend,
+        // positional argument
+        Path source,
+        // positional argument
+        Path target
+    ) {}
+
+    var argVester = ArgVester.create(MethodHandles.lookup(), Copy.class);
+    var args = "--pretend foo.txt bar.txt".split(" ");
+    var copy = argVester.parse(args);
+    assertAll(
+        () -> assertEquals(Path.of("foo.txt"), copy.source),
+        () -> assertEquals(Path.of("bar.txt"), copy.target),
+        () -> assertEquals(true, copy.pretend.orElseThrow())
+    );
+  }
+
+  @Test
+  public void download() {
+    record Download(
+        // positional
+        Path directory,
+        // optional
+        List<String> checksum,
+        // positional
+        String source
+    ) {}
+
+    var argVester = ArgVester.create(MethodHandles.lookup(), Download.class);
+    var args = ". --checksum md5=38423987 --checksum sha256=387348975345797 https://foo.com/".split(" ");
+    var download = argVester.parse(args);
+    assertAll(
+        () -> assertEquals(Path.of("."), download.directory),
+        () -> assertEquals("https://foo.com/", download.source),
+        () -> assertEquals(List.of("md5=38423987", "sha256=387348975345797"), download.checksum)
+    );
+  }
+
+  @Test
+  public void explicitKind() {
+    record Explicit(
+        @Opt(kind= Kind.OPTIONAL)
+        Optional<Boolean> opt1,
+        @Opt(kind= Kind.OPTIONAL)
+        Optional<String> opt2,
+        @Opt(kind= Kind.OPTIONAL)
+        List<String> opt3,
+        @Opt(kind= Kind.POSITIONAL)
+        String pos,
+        @Opt(kind= Kind.VARIADIC)
+        List<String> variad
+    ) {}
+    var argVester = ArgVester.create(MethodHandles.lookup(), Explicit.class);
+    var args = """
+      --opt1
+      --opt2 foo
+      --opt3 bar
+      --opt3 baz
+      whizz
+      fuzz
+      fuzz2
+      """.lines().flatMap(l -> Arrays.stream(l.split(" "))).toArray(String[]::new);
+    var explicit = argVester.parse(args);
+    assertAll(
+        () -> assertTrue(explicit.opt1.orElseThrow()),
+        () -> assertEquals("foo", explicit.opt2.orElseThrow()),
+        () -> assertEquals(List.of("bar", "baz"), explicit.opt3),
+        () -> assertEquals("whizz", explicit.pos),
+        () -> assertEquals(List.of("fuzz", "fuzz2"), explicit.variad)
+    );
   }
 
   @Test
@@ -190,7 +277,7 @@ public class ArgVesterTest {
 
     var argVester = ArgVester.create(MethodHandles.lookup(), Option.class);
     assertEquals("""
-        netapp <config-file> [options] <filenames...>
+        netapp [options] <config-file> <filenames...>
           with:
             config-file: the configuration file
             filenames: file names exposed as services
@@ -239,7 +326,7 @@ public class ArgVesterTest {
 
     var argVester = ArgVester.create(MethodHandles.lookup(), Option.class);
     assertEquals("""
-        myapp  [options] <filenames...>
+        myapp [options] <filenames...>
           with:
             filenames: file names
         

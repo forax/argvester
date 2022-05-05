@@ -120,7 +120,9 @@ public class ArgVester<R extends Record> {
       }
     }
   }
-  private record OptionalArg(Info info, Function<String, ?> converter, Collector<Object, ?, ?> collector, int position, Kind kind) implements Arg {
+
+  private record PositionalArg(Info info, int position, Function<String, ?> converter) implements Arg {}
+  private record OptionalArg(Info info, int position, Function<String, ?> converter, Collector<Object, ?, ?> collector, Kind kind) implements Arg {
     private enum Kind {
       FLAG,
       OPTIONAL,
@@ -131,18 +133,23 @@ public class ArgVester<R extends Record> {
       return kind == Kind.FLAG? optionName: optionName + " " + info.valueHelp;
     }
   }
-  private record PositionalArg(Info info, Function<String, ?> converter) implements Arg {}
+
   private record VariadicArg(Info info, Function<String, ?> converter, Collector<Object, ?, ?> collector) implements Arg {}
 
   private final Constructor<R> constructor;
   private final ArrayList<PositionalArg> positionalArgs;
-  private final LinkedHashMap<String, OptionalArg> optionalArgs;
+  private final LinkedHashMap<String, OptionalArg> optionalArgMap;
+  private final ArrayList<OptionalArg> optionalArgs;
   private final VariadicArg variadicArg;
 
   private ArgVester(Constructor<R> constructor,
-                    ArrayList<PositionalArg> positionalArgs, LinkedHashMap<String, OptionalArg> optionalArgs, VariadicArg variadicArg) {
+                    ArrayList<PositionalArg> positionalArgs,
+                    LinkedHashMap<String, OptionalArg> optionalArgMap,
+                    ArrayList<OptionalArg> optionalArgs,
+                    VariadicArg variadicArg) {
     this.constructor = constructor;
     this.positionalArgs = positionalArgs;
+    this.optionalArgMap = optionalArgMap;
     this.optionalArgs = optionalArgs;
     this.variadicArg = variadicArg;
   }
@@ -217,7 +224,8 @@ public class ArgVester<R extends Record> {
 
     // scan to find all arguments in the meta description
     var positionalArgs = new ArrayList<PositionalArg>();
-    var optionalArgs = new LinkedHashMap<String, OptionalArg>();
+    var optionalArgMap = new LinkedHashMap<String, OptionalArg>();
+    var optionalArgs = new ArrayList<OptionalArg>();
     VariadicArg variadicArg = null;
     var recordComponents = schema.getRecordComponents();
     var length = recordComponents.length;
@@ -240,7 +248,7 @@ public class ArgVester<R extends Record> {
           if (clazz == null) {
             throw new InvalidMetaDescriptionException("invalid type for a positional argument, " + component);
           }
-          positionalArgs.add(new PositionalArg(Info.create(component), converter(component, clazz)));
+          positionalArgs.add(new PositionalArg(Info.create(component), i, converter(component, clazz)));
         }
         case OPTIONAL -> {
           Collector<Object, ?,?> collector;
@@ -259,9 +267,10 @@ public class ArgVester<R extends Record> {
             collector = collector(component, collectionType.collection);
           }
           var info = Info.create(component);
-          var optionalArg = new OptionalArg(info, converter(component, clazz), collector, i, kind);
-          optionalArgs.put("-" + info.abbrev, optionalArg);
-          optionalArgs.put("--" + info.name, optionalArg);
+          var optionalArg = new OptionalArg(info, i, converter(component, clazz), collector, kind);
+          optionalArgMap.put("-" + info.abbrev, optionalArg);
+          optionalArgMap.put("--" + info.name, optionalArg);
+          optionalArgs.add(optionalArg);
         }
         case VARIADIC -> {
           if (variadicArg != null) {
@@ -290,7 +299,7 @@ public class ArgVester<R extends Record> {
     @SuppressWarnings("unchecked")
     var constructor = (Constructor<R>) MethodHandles.reflectAs(Constructor.class, mh);
 
-    return new ArgVester<>(constructor, positionalArgs, optionalArgs, variadicArg);
+    return new ArgVester<>(constructor, positionalArgs, optionalArgMap, optionalArgs, variadicArg);
   }
 
   private static Collector<Object,?,?> collector(RecordComponent component, Class<?> collectionClass) {
@@ -453,7 +462,7 @@ public class ArgVester<R extends Record> {
   public String toHelp(String applicationName) {
     var positionals = positionalArgs.stream().map(arg -> "<" + arg.info.name + ">").collect(joining(" "));
     var positionalHelp = positionalArgs.stream().map(arg -> (arg.info.name + ": " + arg.info.help).indent(4)).collect(joining("\n"));
-    var options = optionalArgs.entrySet().stream()
+    var options = optionalArgMap.entrySet().stream()
         .sorted(Comparator.comparing(e -> e.getValue().info.name))
         .collect(groupingBy(Map.Entry::getValue, LinkedHashMap::new, mapping(Map.Entry::getKey, toList())));
     var optionalHelp = options.entrySet().stream()
@@ -461,8 +470,10 @@ public class ArgVester<R extends Record> {
         .collect(joining(""));
     var variadic = Optional.ofNullable(variadicArg).map(arg -> "<" + arg.info.name + "...>");
     var variadicHelp = Optional.ofNullable(variadicArg).map(arg -> arg.info.description().indent(4));
-    return applicationName + " " +
-        positionals + (optionalHelp.isEmpty()? " ": " [options] ") + variadic.orElse("") + "\n" +
+    return applicationName
+        + (optionalHelp.isEmpty()? "": " [options]")
+        + (positionals.isEmpty()? "": " " + positionals)
+        + variadic.map(v -> " " + v).orElse("") + "\n" +
         "  with:\n" +
         positionalHelp +
         variadicHelp.orElse("") +
@@ -508,8 +519,10 @@ public class ArgVester<R extends Record> {
     requireNonNull(args);
 
     var values = new Object[constructor.getParameterCount()];
-    for (var optionalArg : optionalArgs.values()) {
-      values[optionalArg.position] = Optional.empty();
+    for (var optionalArg : optionalArgs) {
+      if (optionalArg.kind == OptionalArg.Kind.LIST) {
+        values[optionalArg.position] = new ArrayList<>();
+      }
     }
 
     var positionalIndex = 0;
@@ -521,10 +534,10 @@ public class ArgVester<R extends Record> {
         String value;
         var tokens = splitIfCompact(arg);
         if (tokens != null) {
-          optionalArg = optionalArgs.get(tokens[0]);
+          optionalArg = optionalArgMap.get(tokens[0]);
           value = tokens[1];
         } else {
-          optionalArg = optionalArgs.get(arg);
+          optionalArg = optionalArgMap.get(arg);
           if (optionalArg == null || optionalArg.kind == OptionalArg.Kind.FLAG) {  // delay null check see below
             value = "true";
           } else {
@@ -534,12 +547,18 @@ public class ArgVester<R extends Record> {
         if (optionalArg == null) {  // optional argument not found
           throw new ArgumentParsingException("unknown optional argument " + arg);
         }
-        values[optionalArg.position] = Optional.of(optionalArg.convert(value));
+        if (optionalArg.kind == OptionalArg.Kind.LIST) {
+          @SuppressWarnings("unchecked")
+          var list = (ArrayList<Object>) values[optionalArg.position];
+          list.add(optionalArg.convert(value));
+        } else {
+          values[optionalArg.position] = optionalArg.convert(value);
+        }
         continue;
       }
       if (positionalIndex < positionalArgs.size()) {  // positional
-        var positionalArg = positionalArgs.get(positionalIndex);
-        values[positionalIndex++] = positionalArg.convert(arg);
+        var positionalArg = positionalArgs.get(positionalIndex++);
+        values[positionalArg.position] = positionalArg.convert(arg);
         continue;
       }
       if (variadicList != null) {  // variadic
@@ -555,6 +574,16 @@ public class ArgVester<R extends Record> {
       throw new ArgumentParsingException("required arguments are not provided");
     }
 
+    for (var optionalArg : optionalArgs) {
+      if (optionalArg.kind == OptionalArg.Kind.LIST) {
+        @SuppressWarnings("unchecked")
+        var list = (ArrayList<Object>) values[optionalArg.position];
+        values[optionalArg.position] = list.stream().collect(optionalArg.collector);
+      } else {
+        var value = values[optionalArg.position];
+        values[optionalArg.position] = Optional.ofNullable(value);
+      }
+    }
     if (variadicList != null) {
       values[values.length - 1] = variadicList.stream().collect(variadicArg.collector);
     }
