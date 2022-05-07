@@ -4,9 +4,7 @@ import java.io.Serial;
 import java.lang.annotation.Retention;
 import java.lang.annotation.Target;
 import java.lang.invoke.MethodHandle;
-import java.lang.invoke.MethodHandles;
 import java.lang.invoke.MethodHandles.Lookup;
-import java.lang.reflect.Constructor;
 import java.lang.reflect.ParameterizedType;
 import java.lang.reflect.RecordComponent;
 import java.lang.reflect.Type;
@@ -133,16 +131,15 @@ public class ArgVester<R extends Record> {
       return kind == Kind.FLAG? optionName: optionName + " " + info.valueHelp;
     }
   }
-
   private record VariadicArg(Info info, Function<String, ?> converter, Collector<Object, ?, ?> collector) implements Arg {}
 
-  private final Constructor<R> constructor;
+  private final MethodHandle constructor;
   private final ArrayList<PositionalArg> positionalArgs;
   private final LinkedHashMap<String, OptionalArg> optionalArgMap;
   private final ArrayList<OptionalArg> optionalArgs;
   private final VariadicArg variadicArg;
 
-  private ArgVester(Constructor<R> constructor,
+  private ArgVester(MethodHandle constructor,
                     ArrayList<PositionalArg> positionalArgs,
                     LinkedHashMap<String, OptionalArg> optionalArgMap,
                     ArrayList<OptionalArg> optionalArgs,
@@ -296,10 +293,7 @@ public class ArgVester<R extends Record> {
       throw (IllegalAccessError) new IllegalAccessError().initCause(e);
     }
 
-    @SuppressWarnings("unchecked")
-    var constructor = (Constructor<R>) MethodHandles.reflectAs(Constructor.class, mh);
-
-    return new ArgVester<>(constructor, positionalArgs, optionalArgMap, optionalArgs, variadicArg);
+    return new ArgVester<>(mh, positionalArgs, optionalArgMap, optionalArgs, variadicArg);
   }
 
   private static Collector<Object,?,?> collector(RecordComponent component, Class<?> collectionClass) {
@@ -407,7 +401,7 @@ public class ArgVester<R extends Record> {
    * Print a help message from the meta description
    *
    * For example with the record
-   * <pre>
+   * <pre>{@code
    *   enum LogLevel { error, warning }
    *   record Option(
    *       // positional argument
@@ -422,22 +416,23 @@ public class ArgVester<R extends Record> {
    *       //   e.g., --bind-address=192.168.0.10
    *       //   e.g., --bind-address 192.168.0.10
    *       @Opt(valueHelp = "address", help = "bind address of the service")
-   *       Optional&lt;String&gt; bind_address,
+   *       Optional<String> bind_address,
    *
    *       // use enum to restrict possible arguments
    *       @Opt(valueHelp = "level", help = "logger level")
-   *       Optional&lt;LogLevel&gt; log_level,
+   *       Optional<LogLevel> log_level,
    *
    *       // flag argument
    *       // -v or --verbose
    *       @Opt(help = "logged data verbose mode")
-   *       Optional&lt;Boolean&gt; verbose,
+   *       Optional<Boolean> verbose,
    *
    *       // variadic argument
    *       // use a collection like java.util.List or java.util.Set
    *       @Opt(help = "file names exposed as services")
-   *       List&lt;String&gt; filenames
+   *       List<String> filenames
    *     ) {}
+   * }
    * </pre>
    *
    * A call to {@code toHelp("myapp")} return the following text
@@ -518,7 +513,7 @@ public class ArgVester<R extends Record> {
   public R parse(String[] args) throws ArgumentParsingException {
     requireNonNull(args);
 
-    var values = new Object[constructor.getParameterCount()];
+    var values = new Object[constructor.type().parameterCount()];
     for (var optionalArg : optionalArgs) {
       if (optionalArg.kind == OptionalArg.Kind.LIST) {
         values[optionalArg.position] = new ArrayList<>();
@@ -589,7 +584,9 @@ public class ArgVester<R extends Record> {
     }
 
     try {
-      return constructor.newInstance(values);
+      @SuppressWarnings("unchecked")
+      R result = (R) constructor.invokeWithArguments(values);
+      return result;
     } catch(RuntimeException | Error e) {
       throw e;
     } catch (Throwable e) {
