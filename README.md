@@ -1,7 +1,7 @@
 # argvester
-ARGument harVESTER - a simple command line parser written with Love and Java 15
+ARGument harVESTER - a simple command line parser written with Love and Java 17
 
-Apart from being fun, the code also show how record (Java 14) and sealed types (Java 15) works together.
+Apart from being fun, the code also show how record and sealed types works together.
 
 The argvester uses a record as a meta description of the arguments of the command line.
 The original idea comes from [structopt](https://github.com/p-ranav/structopt) that uses
