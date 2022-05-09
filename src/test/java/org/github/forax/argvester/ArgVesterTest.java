@@ -341,6 +341,7 @@ public class ArgVesterTest {
     record Option(
         int value,
         Optional<Double> level,
+        Optional<Boolean> flag,
         List<Integer> integers
     ) { }
 
@@ -349,6 +350,8 @@ public class ArgVesterTest {
         () -> assertThrows(ArgumentParsingException.class, () -> argVester.parse("12 --bang".split(" "))),  // unknown option
         () -> assertThrows(ArgumentParsingException.class, () -> argVester.parse("bang".split(" "))),       // first positional not an integer
         () -> assertThrows(ArgumentParsingException.class, () -> argVester.parse("12 --level bang".split(" "))),   // level argument not a double
+        () -> assertThrows(ArgumentParsingException.class, () -> argVester.parse("12 --level bang --level foo".split(" "))),   // level argument can not be repeated
+        () -> assertThrows(ArgumentParsingException.class, () -> argVester.parse("12 --flag --flag".split(" "))),   // flag argument can not be repeated
         () -> assertThrows(ArgumentParsingException.class, () -> argVester.parse("12 --level 4 bang".split(" "))), // variadic argument not an int
         () -> assertThrows(ArgumentParsingException.class, () -> argVester.parse("12 bang".split(" "))), // variadic argument not an int
         () -> assertThrows(ArgumentParsingException.class, () -> argVester.parse(new String[0])), // positional argument required

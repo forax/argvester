@@ -120,17 +120,14 @@ public class ArgVester<R extends Record> {
   }
 
   private record PositionalArg(Info info, int position, Function<String, ?> converter) implements Arg {}
-  private record OptionalArg(Info info, int position, Function<String, ?> converter, Collector<Object, ?, ?> collector, Kind kind) implements Arg {
-    private enum Kind {
-      FLAG,
-      OPTIONAL,
-      LIST
-    }
 
+  private enum Variety { FLAG, ONCE, MULTIPLE }
+  private record OptionalArg(Info info, int position, Function<String, ?> converter, Collector<Object, ?, ?> collector, Variety variety) implements Arg {
     String withParam(String optionName) {
-      return kind == Kind.FLAG? optionName: optionName + " " + info.valueHelp;
+      return variety == Variety.FLAG? optionName: optionName + " " + info.valueHelp;
     }
   }
+
   private record VariadicArg(Info info, Function<String, ?> converter, Collector<Object, ?, ?> collector) implements Arg {}
 
   private final MethodHandle constructor;
@@ -249,22 +246,22 @@ public class ArgVester<R extends Record> {
         }
         case OPTIONAL -> {
           Collector<Object, ?,?> collector;
-          OptionalArg.Kind kind;
+          Variety variety;
           var clazz = isOptional(type);
           if (clazz != null) {
-            kind = clazz == Boolean.class? OptionalArg.Kind.FLAG: OptionalArg.Kind.OPTIONAL;
+            variety = clazz == Boolean.class? Variety.FLAG: Variety.ONCE;
             collector = null;
           } else {
             var collectionType = isCollection(type);
             if (collectionType == null) {
               throw new InvalidMetaDescriptionException("invalid type for a optional argument, " + component);
             }
-            kind = OptionalArg.Kind.LIST;
+            variety = Variety.MULTIPLE;
             clazz = collectionType.clazz;
             collector = collector(component, collectionType.collection);
           }
           var info = Info.create(component);
-          var optionalArg = new OptionalArg(info, i, converter(component, clazz), collector, kind);
+          var optionalArg = new OptionalArg(info, i, converter(component, clazz), collector, variety);
           optionalArgMap.put("-" + info.abbrev, optionalArg);
           optionalArgMap.put("--" + info.name, optionalArg);
           optionalArgs.add(optionalArg);
@@ -515,7 +512,7 @@ public class ArgVester<R extends Record> {
 
     var values = new Object[constructor.type().parameterCount()];
     for (var optionalArg : optionalArgs) {
-      if (optionalArg.kind == OptionalArg.Kind.LIST) {
+      if (optionalArg.variety == Variety.MULTIPLE) {
         values[optionalArg.position] = new ArrayList<>();
       }
     }
@@ -533,7 +530,7 @@ public class ArgVester<R extends Record> {
           value = tokens[1];
         } else {
           optionalArg = optionalArgMap.get(arg);
-          if (optionalArg == null || optionalArg.kind == OptionalArg.Kind.FLAG) {  // delay null check see below
+          if (optionalArg == null || optionalArg.variety == Variety.FLAG) {  // delay null check see below
             value = "true";
           } else {
             value = args[++i];
@@ -542,11 +539,14 @@ public class ArgVester<R extends Record> {
         if (optionalArg == null) {  // optional argument not found
           throw new ArgumentParsingException("unknown optional argument " + arg);
         }
-        if (optionalArg.kind == OptionalArg.Kind.LIST) {
+        if (optionalArg.variety == Variety.MULTIPLE) {
           @SuppressWarnings("unchecked")
           var list = (ArrayList<Object>) values[optionalArg.position];
           list.add(optionalArg.convert(value));
         } else {
+          if (values[optionalArg.position] != null) {
+            throw new ArgumentParsingException("argument " + arg + " is repeated");
+          }
           values[optionalArg.position] = optionalArg.convert(value);
         }
         continue;
@@ -570,7 +570,7 @@ public class ArgVester<R extends Record> {
     }
 
     for (var optionalArg : optionalArgs) {
-      if (optionalArg.kind == OptionalArg.Kind.LIST) {
+      if (optionalArg.variety == Variety.MULTIPLE) {
         @SuppressWarnings("unchecked")
         var list = (ArrayList<Object>) values[optionalArg.position];
         values[optionalArg.position] = list.stream().collect(optionalArg.collector);
