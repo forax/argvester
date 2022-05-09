@@ -360,13 +360,17 @@ public class ArgVester<R extends Record> {
        */
       VARIADIC,
       /**
-       * Automatic argument, the position in the record determines the kind of argument.
+       * Automatic argument, a heuristic describe in {@link #kind()} is used.
        */
       AUTO
     }
 
     /**
-     * Argument kind.
+     * Argument kind among {@link Kind#POSITIONAL}, {@link Kind#OPTIONAL}, {@link Kind#VARIADIC}
+     * or {@link Kind#AUTO}.
+     * If {@link Kind#AUTO} then the ArgVester tries to guess the argument kind using the following heuristic,
+     * if the argument is the last and its type is a collection, then it's a variadic argument,
+     * if its type is optional or a collection, the argument is optional otherwise the argument is positional.
      */
     Kind kind() default Kind.AUTO;
 
