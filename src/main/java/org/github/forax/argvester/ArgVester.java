@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -452,6 +453,8 @@ public class ArgVester<R extends Record> {
    * @return a text describing the command line arguments
    */
   public String toHelp(String applicationName) {
+    Objects.requireNonNull(applicationName);
+
     var positionals = positionalArgs.stream().map(arg -> "<" + arg.info.name + ">").collect(joining(" "));
     var positionalHelp = positionalArgs.stream().map(arg -> (arg.info.name + ": " + arg.info.help).indent(4)).collect(joining("\n"));
     var options = optionalArgMap.entrySet().stream()
