@@ -1,6 +1,7 @@
 package org.github.forax.argvester;
 
 import org.github.forax.argvester.ArgVester.ArgumentParsingException;
+import org.github.forax.argvester.ArgVester.InvalidMetaDescriptionException;
 import org.github.forax.argvester.ArgVester.Opt;
 import org.github.forax.argvester.ArgVester.Opt.Kind;
 import org.junit.jupiter.api.Test;
@@ -334,6 +335,38 @@ public class ArgVesterTest {
             user: user name
               -u user or --user user
         """, argVester.toHelp("myapp"));
+  }
+
+  @Test
+  public void createInvalidMetaDescriptions() {
+    record InvalidPositionalType(
+        @Opt(kind=Kind.POSITIONAL)
+        Optional<Boolean> value
+    ) { }
+    record InvalidPositionalType2(
+        @Opt(kind=Kind.POSITIONAL)
+        List<String> value
+    ) { }
+    record InvalidOptionalType(
+        @Opt(kind=Kind.OPTIONAL)
+        int value
+    ) { }
+    record InvalidVariadicType(
+        @Opt(kind=Kind.VARIADIC)
+        int value
+    ) { }
+    record InvalidType(
+        java.util.Random value
+    ) { }
+
+    var lookup = MethodHandles.lookup();
+    assertAll(
+        () -> assertThrows(InvalidMetaDescriptionException.class, () -> ArgVester.create(lookup, InvalidPositionalType.class)),
+        () -> assertThrows(InvalidMetaDescriptionException.class, () -> ArgVester.create(lookup, InvalidPositionalType2.class)),
+        () -> assertThrows(InvalidMetaDescriptionException.class, () -> ArgVester.create(lookup, InvalidOptionalType.class)),
+        () -> assertThrows(InvalidMetaDescriptionException.class, () -> ArgVester.create(lookup, InvalidVariadicType.class)),
+        () -> assertThrows(InvalidMetaDescriptionException.class, () -> ArgVester.create(lookup, InvalidType.class))
+        );
   }
 
   @Test
