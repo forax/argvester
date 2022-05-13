@@ -1,5 +1,6 @@
-package org.github.forax.argvester;
+package test.integration;
 
+import org.github.forax.argvester.ArgVester;
 import org.github.forax.argvester.ArgVester.ArgumentParsingException;
 import org.github.forax.argvester.ArgVester.InvalidMetaDescriptionException;
 import org.github.forax.argvester.ArgVester.Opt;
